@@ -1,0 +1,1851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="To do" />
+  <meta name="theme-color" content="#f9f8f5" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1a1a18" media="(prefers-color-scheme: dark)" />
+  <title>To do</title>
+
+  <!-- PWA icon — generated inline via canvas so no external files needed -->
+  <script>
+    (function() {
+      const size = 512;
+      const c = document.createElement("canvas");
+      c.width = c.height = size;
+      const ctx = c.getContext("2d");
+
+      // Background: warm off-white #f9f8f5
+      ctx.fillStyle = "#f9f8f5";
+      // Rounded rect for iOS icon shape (iOS clips anyway, but looks right elsewhere)
+      const r = size * 0.2;
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.lineTo(size - r, 0);
+      ctx.quadraticCurveTo(size, 0, size, r);
+      ctx.lineTo(size, size - r);
+      ctx.quadraticCurveTo(size, size, size - r, size);
+      ctx.lineTo(r, size);
+      ctx.quadraticCurveTo(0, size, 0, size - r);
+      ctx.lineTo(0, r);
+      ctx.quadraticCurveTo(0, 0, r, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // Circle outline: blue #4a90d9, centered, stroke only
+      const cx = size / 2;
+      const cy = size / 2;
+      const radius = size * 0.28;
+      const strokeWidth = size * 0.045;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = "#4a90d9";
+      ctx.lineWidth = strokeWidth;
+      ctx.stroke();
+
+      const dataURL = c.toDataURL("image/png");
+
+      // Apple touch icon (iPhone / iPad home screen)
+      const appleLink = document.createElement("link");
+      appleLink.rel = "apple-touch-icon";
+      appleLink.sizes = "512x512";
+      appleLink.href = dataURL;
+      document.head.appendChild(appleLink);
+
+      // Standard favicon
+      const faviconLink = document.createElement("link");
+      faviconLink.rel = "icon";
+      faviconLink.type = "image/png";
+      faviconLink.href = dataURL;
+      document.head.appendChild(faviconLink);
+
+      // Web app manifest (inline) for Android / Chrome install
+      const manifest = {
+        name: "To do",
+        short_name: "To do",
+        start_url: "./",
+        display: "standalone",
+        background_color: "#f9f8f5",
+        theme_color: "#f9f8f5",
+        icons: [{ src: dataURL, sizes: "512x512", type: "image/png" }]
+      };
+      const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/json" });
+      const manifestURL = URL.createObjectURL(manifestBlob);
+      const manifestLink = document.createElement("link");
+      manifestLink.rel = "manifest";
+      manifestLink.href = manifestURL;
+      document.head.appendChild(manifestLink);
+    })();
+  </script>
+
+  <!-- Google API -->
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="https://accounts.google.com/gsi/client"></script>
+
+  <!-- React -->
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'EB Garamond', Georgia, serif;
+      background: #f9f8f5;
+      color: #1c1c1a;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      overflow-x: hidden;
+      /* iOS PWA: allow pull gesture to reach our handler */
+      overscroll-behavior-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* ── Auth screen ── */
+    .auth-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 40px 32px;
+      text-align: center;
+    }
+    .auth-title {
+      font-size: 42px;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      color: #1c1c1a;
+      margin-bottom: 12px;
+    }
+    .auth-sub {
+      font-size: 16px;
+      color: #8a8880;
+      font-style: italic;
+      margin-bottom: 48px;
+    }
+    .auth-btn {
+      font-family: 'EB Garamond', serif;
+      font-size: 16px;
+      color: #f9f8f5;
+      background: #1c1c1a;
+      border: none;
+      padding: 14px 32px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: opacity 0.15s;
+    }
+    .auth-btn:hover { opacity: 0.8; }
+    .auth-note {
+      font-size: 13px;
+      color: #b0aca4;
+      font-style: italic;
+      margin-top: 20px;
+    }
+
+    /* ── Sync status bar ── */
+    .sync-bar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: #4a90d9;
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 0.3s, opacity 0.4s;
+      opacity: 0;
+      z-index: 100;
+    }
+    .sync-bar.active {
+      transform: scaleX(1);
+      opacity: 1;
+    }
+
+    /* ── Pull to refresh indicator ── */
+    .ptr-indicator {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 56px;
+      pointer-events: none;
+      z-index: 99;
+      transform: translateY(-56px);
+      transition: transform 0.2s ease;
+    }
+    .ptr-indicator.visible {
+      transform: translateY(0);
+    }
+    .ptr-spinner {
+      width: 18px;
+      height: 18px;
+      border: 1.5px solid #d4cfc6;
+      border-top-color: #4a90d9;
+      border-radius: 50%;
+    }
+    .ptr-spinner.spinning {
+      animation: spin 0.7s linear infinite;
+    }
+    .ptr-text {
+      font-family: 'EB Garamond', serif;
+      font-size: 13px;
+      font-style: italic;
+      color: #8a8880;
+      margin-left: 8px;
+    }
+    @media (prefers-color-scheme: dark) {
+      .ptr-text { color: #6a6660; }
+      .ptr-spinner { border-color: #3a3835; border-top-color: #4a90d9; }
+    }
+
+    .app {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 72px 32px 120px 32px;
+    }
+
+    .hd { margin-bottom: 56px; }
+    .hd-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .hd-date {
+      font-size: 15px;
+      color: #5a5854;
+      font-style: italic;
+    }
+    .hd-signout {
+      font-family: 'EB Garamond', serif;
+      font-size: 14px;
+      color: #c8c2b8;
+      font-style: italic;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      transition: color 0.15s;
+    }
+    .hd-signout:hover { color: #8a8880; }
+    .hd-title {
+      font-size: 42px;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      color: #1c1c1a;
+      line-height: 1;
+    }
+
+    .section { margin-bottom: 52px; }
+    .sec-label {
+      font-size: 14px;
+      letter-spacing: 0.10em;
+      color: #5a5854;
+      margin-bottom: 16px;
+      font-style: italic;
+    }
+    .sec-label-btn {
+      font-family: 'EB Garamond', serif;
+      font-size: 14px;
+      letter-spacing: 0.10em;
+      color: #5a5854;
+      margin-bottom: 16px;
+      font-style: italic;
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      display: block;
+      transition: color 0.15s;
+    }
+    .sec-label-btn:hover { color: #1c1c1a; }
+
+    .sub-label {
+      font-size: 21px;
+      font-weight: 400;
+      color: #1c1c1a;
+      margin-bottom: 8px;
+      margin-top: 28px;
+      letter-spacing: -0.01em;
+    }
+    .sub-label.first { margin-top: 0; }
+    .sub-meta {
+      font-size: 15px;
+      font-style: italic;
+      color: #a09b94;
+      margin-left: 10px;
+    }
+
+    .list-scroll {
+      max-height: calc(7 * 44px);
+      overflow-y: auto;
+      overflow-x: visible;
+      scrollbar-width: none;
+      margin-left: -3px;
+      padding-left: 3px;
+    }
+    .list-scroll::-webkit-scrollbar { display: none; }
+    .task-list { list-style: none; }
+
+    .t-item, .habit-row, .timed-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 44px;
+      transition: opacity 0.2s;
+    }
+    .t-item.done, .timed-row.done { opacity: 0.28; }
+    .t-item.done .t-text, .timed-row.done .t-text { text-decoration: line-through; }
+    .habit-row.done { opacity: 0.28; }
+    .habit-row.done .habit-name { text-decoration: line-through; }
+
+    .ring {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 1px solid #c8c2b8;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.15s, background 0.15s;
+      margin-left: 3px;
+    }
+    .ring:hover { border-color: #6a6a6a; }
+    .ring.on { background: #4a90d9; border-color: #4a90d9; }
+    .ring.on::after {
+      content: '';
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: #f9f8f5;
+    }
+
+    .add-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      height: 38px;
+      margin-top: 2px;
+      margin-left: -3px;
+      padding-left: 3px;
+    }
+    .add-ring {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 1px dashed #ccc8c0;
+      flex-shrink: 0;
+      margin-left: 3px;
+    }
+    .t-text {
+      font-size: 19px;
+      font-weight: 400;
+      flex: 1;
+      color: #1c1c1a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: default;
+    }
+    .edit-input {
+      font-family: 'EB Garamond', serif;
+      font-size: 19px;
+      font-weight: 400;
+      border: none;
+      outline: none;
+      background: transparent;
+      flex: 1;
+      color: #1c1c1a;
+      padding: 0;
+      min-width: 0;
+    }
+    .edit-time-input {
+      font-family: 'EB Garamond', serif;
+      font-size: 14px;
+      font-style: italic;
+      border: none;
+      outline: none;
+      background: transparent;
+      color: #4a90d9;
+      padding: 0;
+      width: 80px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .t-time {
+      font-size: 14px;
+      color: #8a8880;
+      font-style: italic;
+      flex-shrink: 0;
+    }
+    .timed-col {
+      font-size: 14px;
+      color: #1c1c1a;
+      font-style: italic;
+      flex-shrink: 0;
+      margin-left: auto;
+      padding-left: 8px;
+      cursor: text;
+    }
+    .t-del {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #ccc8c0;
+      font-size: 22px;
+      line-height: 1;
+      padding: 0 2px;
+      font-family: inherit;
+      flex-shrink: 0;
+      transition: color 0.15s;
+    }
+    .t-del:hover { color: #888; }
+    .add-in {
+      font-family: 'EB Garamond', serif;
+      font-size: 19px;
+      border: none;
+      outline: none;
+      background: transparent;
+      flex: 1;
+      color: #1c1c1a;
+    }
+    .add-in::placeholder { color: #bbb8b0; font-style: italic; }
+    .time-in {
+      font-family: 'EB Garamond', serif;
+      font-size: 15px;
+      font-style: italic;
+      border: none;
+      outline: none;
+      background: transparent;
+      width: 72px;
+      color: #5a5854;
+      text-align: right;
+    }
+    .time-in:focus { color: #1c1c1a; }
+    .time-in::placeholder { color: #ccc8c0; }
+
+    .habit-name {
+      font-size: 19px;
+      flex: 1;
+      color: #1c1c1a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: default;
+    }
+    .trail {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .tr-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      border: 1px solid #d4cfc6;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      flex-shrink: 0;
+    }
+    .tr-dot.on { background: #4a90d9; border-color: #4a90d9; }
+    .tr-dot.today {
+      width: 8px;
+      height: 8px;
+      border: 1.5px solid #1c1c1a;
+    }
+    .tr-dot.today.on { background: #4a90d9; border-color: #4a90d9; }
+    .tr-dot.future-dot { opacity: 0.25; cursor: default; }
+
+    .overview { margin-top: 20px; }
+    .overview-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      font-family: 'EB Garamond', serif;
+      font-size: 13px;
+      font-style: italic;
+      color: #8a8880;
+      transition: color 0.15s;
+    }
+    .overview-toggle:hover { color: #1c1c1a; }
+    .overview-toggle-arrow {
+      font-size: 10px;
+      transition: transform 0.2s;
+      display: inline-block;
+    }
+    .overview-toggle-arrow.open { transform: rotate(90deg); }
+    .overview-body { margin-top: 16px; }
+    .ov-card { margin-bottom: 24px; }
+    .ov-card-name {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: #8a8880;
+      margin-bottom: 10px;
+      font-style: italic;
+    }
+    .ov-week-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .ov-wk-label { font-size: 10px; color: #b8b3a8; width: 24px; font-style: italic; }
+    .ov-dots { display: flex; gap: 5px; }
+    .ov-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: transparent;
+      border: 1px solid #c8c2b8;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      flex-shrink: 0;
+    }
+    .ov-dot.on { background: #4a90d9 !important; border-color: #4a90d9 !important; }
+    .ov-dot.future { opacity: 0.25; cursor: default; }
+    .ov-dot.td { border-color: #1c1c1a; border-width: 1.5px; }
+    .streak { font-size: 12px; color: #a09b94; font-style: italic; margin-top: 6px; }
+
+    .agenda-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .ag-day { text-align: center; flex: 1; }
+    .ag-day-name { font-size: 27px; font-weight: 400; letter-spacing: -0.01em; color: #1c1c1a; }
+    .ag-day-date { font-size: 14px; font-style: italic; color: #5a5854; margin-top: 2px; }
+    .ag-today-badge { font-size: 14px; font-style: italic; color: #5a5854; }
+    .ag-arrow {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 24px;
+      color: #a09b94;
+      padding: 4px 8px;
+      font-family: inherit;
+      transition: color 0.15s;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .ag-arrow:hover { color: #1c1c1a; }
+    .ag-sub { font-size: 15px; font-style: italic; color: #5a5854; margin-bottom: 6px; margin-top: 20px; }
+    .gcal-badge { font-size: 11px; color: #4a90d9; font-style: italic; flex-shrink: 0; margin-left: 2px; opacity: 0.7; }
+    .cal-status {
+      font-size: 13px;
+      font-style: italic;
+      color: #a09b94;
+      margin-top: 6px;
+      min-height: 18px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .cal-spinner {
+      width: 10px;
+      height: 10px;
+      border: 1px solid #d4cfc6;
+      border-top-color: #4a90d9;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .empty-msg { font-size: 17px; color: #bbb8b0; font-style: italic; padding: 6px 0; }
+    .hint-msg { font-size: 14px; color: #bbb8b0; font-style: italic; margin-top: 4px; }
+
+    /* ── Dark mode ── */
+    @media (prefers-color-scheme: dark) {
+      body { background: #1a1a18; color: #e8e4dc; }
+      .auth-screen { background: #1a1a18; }
+      .auth-title { color: #e8e4dc; }
+      .auth-btn { background: #e8e4dc; color: #1a1a18; }
+      .hd-date { color: #9a9690; }
+      .hd-title { color: #e8e4dc !important; }
+      .hd-signout { color: #3a3835; }
+      .hd-signout:hover { color: #6a6660; }
+      .sec-label { color: #9a9690; }
+      .sec-label-btn { color: #9a9690; }
+      .sec-label-btn:hover { color: #e8e4dc; }
+      .sub-label { color: #e8e4dc !important; }
+      .sub-meta { color: #7a7670; }
+      .t-text { color: #e8e4dc !important; }
+      .habit-name { color: #e8e4dc !important; }
+      .t-time { color: #9a9690; }
+      .timed-col { color: #e8e4dc !important; }
+      .t-del { color: #4a4844; }
+      .t-del:hover { color: #9a9690; }
+      .add-in { color: #e8e4dc; }
+      .add-in::placeholder { color: #4a4844; }
+      .add-ring { border-color: #4a4844; }
+      .edit-input { color: #e8e4dc !important; }
+      .edit-time-input { color: #4a90d9; }
+      .ring { border-color: #4a4844; }
+      .ring:hover { border-color: #9a9690; }
+      .ring.on { background: #4a90d9; border-color: #4a90d9; }
+      .ring.on::after { background: #1a1a18; }
+      .tr-dot { border-color: #3a3835; }
+      .tr-dot.today { border-color: #e8e4dc; }
+      .ov-dot { background: transparent; border-color: #4a4844; }
+      .ov-dot.on { background: #4a90d9 !important; border-color: #4a90d9 !important; }
+      .ov-dot.td { border-color: #e8e4dc; }
+      .overview-toggle { color: #9a9690; }
+      .overview-toggle:hover { color: #e8e4dc; }
+      .ov-card-name { color: #9a9690; }
+      .ov-wk-label { color: #4a4844; }
+      .streak { color: #7a7670; }
+      .ag-day-name { color: #e8e4dc !important; }
+      .ag-day-date { color: #9a9690; }
+      .ag-today-badge { color: #9a9690; }
+      .ag-arrow { color: #7a7670; }
+      .ag-arrow:hover { color: #e8e4dc; }
+      .ag-sub { color: #9a9690; }
+      .empty-msg { color: #4a4844; }
+      .hint-msg { color: #4a4844; }
+      .cal-status { color: #7a7670; }
+      .gcal-badge { color: #4a90d9; }
+      .time-in { color: #9a9690 !important; }
+      .time-in:focus { color: #e8e4dc !important; }
+      .time-in::placeholder { color: #3a3835; }
+    }
+
+    /* ── Theme toggle button ── */
+    .theme-toggle {
+      position: fixed;
+      bottom: 32px;
+      right: 28px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid #d4cfc6;
+      background: #f9f8f5;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      transition: border-color 0.15s, background 0.15s;
+      z-index: 50;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+    }
+    .theme-toggle:hover { border-color: #a09b94; }
+
+    /* Force dark */
+    body.force-dark {
+      background: #1a1a18;
+      color: #e8e4dc;
+    }
+    body.force-dark .theme-toggle {
+      background: #1a1a18;
+      border-color: #3a3835;
+    }
+    body.force-dark .theme-toggle:hover { border-color: #6a6660; }
+    body.force-dark .hd-date { color: #9a9690; }
+    body.force-dark .hd-title { color: #e8e4dc !important; }
+    body.force-dark .hd-signout { color: #3a3835; }
+    body.force-dark .sec-label { color: #9a9690; }
+    body.force-dark .sec-label-btn { color: #9a9690; }
+    body.force-dark .sec-label-btn:hover { color: #e8e4dc; }
+    body.force-dark .sub-label { color: #e8e4dc !important; }
+    body.force-dark .sub-meta { color: #7a7670; }
+    body.force-dark .t-text { color: #e8e4dc !important; }
+    body.force-dark .habit-name { color: #e8e4dc !important; }
+    body.force-dark .t-time { color: #9a9690; }
+    body.force-dark .timed-col { color: #e8e4dc !important; }
+    body.force-dark .t-del { color: #4a4844; }
+    body.force-dark .add-in { color: #e8e4dc; }
+    body.force-dark .add-in::placeholder { color: #4a4844; }
+    body.force-dark .add-ring { border-color: #4a4844; }
+    body.force-dark .edit-input { color: #e8e4dc !important; }
+    body.force-dark .time-in { color: #9a9690 !important; }
+    body.force-dark .time-in:focus { color: #e8e4dc !important; }
+    body.force-dark .time-in::placeholder { color: #3a3835; }
+    body.force-dark .ring { border-color: #4a4844; }
+    body.force-dark .ring:hover { border-color: #9a9690; }
+    body.force-dark .ring.on { background: #4a90d9; border-color: #4a90d9; }
+    body.force-dark .ring.on::after { background: #1a1a18; }
+    body.force-dark .tr-dot { border-color: #3a3835; }
+    body.force-dark .tr-dot.today { border-color: #e8e4dc; }
+    body.force-dark .ov-dot { background: transparent; border-color: #4a4844; }
+    body.force-dark .ov-dot.on { background: #4a90d9 !important; border-color: #4a90d9 !important; }
+    body.force-dark .ov-dot.td { border-color: #e8e4dc; }
+    body.force-dark .overview-toggle { color: #9a9690; }
+    body.force-dark .overview-toggle:hover { color: #e8e4dc; }
+    body.force-dark .ov-card-name { color: #9a9690; }
+    body.force-dark .ov-wk-label { color: #4a4844; }
+    body.force-dark .streak { color: #7a7670; }
+    body.force-dark .ag-day-name { color: #e8e4dc !important; }
+    body.force-dark .ag-day-date { color: #9a9690; }
+    body.force-dark .ag-today-badge { color: #9a9690; }
+    body.force-dark .ag-arrow { color: #7a7670; }
+    body.force-dark .ag-arrow:hover { color: #e8e4dc; }
+    body.force-dark .ag-sub { color: #9a9690; }
+    body.force-dark .empty-msg { color: #4a4844; }
+    body.force-dark .hint-msg { color: #4a4844; }
+    body.force-dark .cal-status { color: #7a7670; }
+
+    /* Force light (overrides system dark) */
+    body.force-light {
+      background: #f9f8f5 !important;
+      color: #1c1c1a !important;
+    }
+    body.force-light .theme-toggle {
+      background: #f9f8f5;
+      border-color: #d4cfc6;
+    }
+    body.force-light .hd-date { color: #5a5854 !important; }
+    body.force-light .hd-title { color: #1c1c1a !important; }
+    body.force-light .sec-label { color: #5a5854 !important; }
+    body.force-light .sec-label-btn { color: #5a5854 !important; }
+    body.force-light .sub-label { color: #1c1c1a !important; }
+    body.force-light .t-text { color: #1c1c1a !important; }
+    body.force-light .habit-name { color: #1c1c1a !important; }
+    body.force-light .timed-col { color: #1c1c1a !important; }
+    body.force-light .edit-input { color: #1c1c1a !important; }
+    body.force-light .add-in { color: #1c1c1a !important; }
+    body.force-light .time-in { color: #5a5854 !important; }
+    body.force-light .time-in:focus { color: #1c1c1a !important; }
+    body.force-light .ring { border-color: #c8c2b8 !important; background: transparent !important; }
+    body.force-light .ring.on { background: #4a90d9 !important; border-color: #4a90d9 !important; }
+    body.force-light .ring.on::after { background: #f9f8f5 !important; }
+    body.force-light .ag-day-name { color: #1c1c1a !important; }
+    body.force-light .overview-toggle { color: #8a8880 !important; }
+    body.force-light .tr-dot { border-color: #d4cfc6 !important; }
+    body.force-light .ov-dot { background: transparent !important; border-color: #c8c2b8 !important; }
+    body.force-light .ov-dot.on { background: #4a90d9 !important; border-color: #4a90d9 !important; }
+  </style>
+</head>
+<body>
+  <div id="sync-bar" class="sync-bar"></div>
+  <div id="ptr-indicator" class="ptr-indicator">
+    <div id="ptr-spinner" class="ptr-spinner"></div>
+    <span id="ptr-text" class="ptr-text">Pull to refresh</span>
+  </div>
+  <button id="theme-toggle-btn" class="theme-toggle" title="Toggle light/dark">☽</button>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    // ── Pull-to-refresh ───────────────────────────────────────────────────────
+    let _ptrRefreshCallback = null;
+
+    function initPullToRefresh() {
+      const indicator = document.getElementById("ptr-indicator");
+      const spinner = document.getElementById("ptr-spinner");
+      const text = document.getElementById("ptr-text");
+      const THRESHOLD = 80;
+      let startY = 0;
+      let currentY = 0;
+      let pulling = false;
+      let refreshing = false;
+      let active = false;
+
+      // Get the scrollable element — in iOS PWA it's document.documentElement or body
+      function getScrollTop() {
+        return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      }
+
+      function onTouchStart(e) {
+        if (refreshing) return;
+        startY = e.touches[0].clientY;
+        currentY = startY;
+        // Only arm if truly at top
+        pulling = getScrollTop() <= 0;
+      }
+
+      function onTouchMove(e) {
+        if (!pulling || refreshing) return;
+        currentY = e.touches[0].clientY;
+        const dy = currentY - startY;
+
+        // Guard: if user is scrolling down the page, disarm
+        if (getScrollTop() > 2) { pulling = false; return; }
+
+        if (dy > 0) {
+          active = true;
+          const clamped = Math.min(dy * 0.5, THRESHOLD);
+          indicator.style.transform = `translateY(${clamped}px)`;
+          indicator.classList.add("visible");
+          text.textContent = dy >= THRESHOLD ? "Release to refresh" : "Pull to refresh";
+          const progress = Math.min(dy / THRESHOLD, 1);
+          spinner.style.transform = `rotate(${progress * 360}deg)`;
+        }
+      }
+
+      async function onTouchEnd(e) {
+        if (!pulling || refreshing) { reset(); return; }
+        pulling = false;
+        const dy = (e.changedTouches[0].clientY) - startY;
+
+        if (dy >= THRESHOLD && active && _ptrRefreshCallback) {
+          refreshing = true;
+          text.textContent = "Refreshing…";
+          spinner.style.transform = "";
+          spinner.classList.add("spinning");
+          indicator.style.transition = "none";
+          indicator.style.transform = `translateY(${THRESHOLD}px)`;
+          try {
+            await _ptrRefreshCallback();
+          } finally {
+            refreshing = false;
+            spinner.classList.remove("spinning");
+            indicator.style.transition = "transform 0.3s ease";
+            indicator.style.transform = "translateY(-64px)";
+            setTimeout(() => { reset(); }, 320);
+          }
+        } else {
+          reset();
+        }
+      }
+
+      function reset() {
+        active = false;
+        indicator.style.transition = "transform 0.2s ease";
+        indicator.style.transform = "translateY(-64px)";
+        setTimeout(() => {
+          indicator.classList.remove("visible");
+          indicator.style.transition = "";
+          indicator.style.transform = "";
+          text.textContent = "Pull to refresh";
+          spinner.style.transform = "";
+        }, 220);
+      }
+
+      // Attach to both document and body to cover iOS PWA edge cases
+      document.addEventListener("touchstart", onTouchStart, { passive: true });
+      document.addEventListener("touchmove", onTouchMove, { passive: true });
+      document.addEventListener("touchend", onTouchEnd, { passive: true });
+      document.addEventListener("touchcancel", () => { pulling = false; reset(); }, { passive: true });
+    }
+
+    initPullToRefresh();
+
+    // ── Theme toggle ──────────────────────────────────────────────────────────
+    (function() {
+      const btn = document.getElementById("theme-toggle-btn");
+      const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      // States: "system" | "light" | "dark"
+      let mode = localStorage.getItem("todo_theme") || "system";
+
+      function applyMode() {
+        document.body.classList.remove("force-dark", "force-light");
+        const isDark =
+          mode === "dark" || (mode === "system" && systemDark);
+        if (mode === "dark") document.body.classList.add("force-dark");
+        if (mode === "light") document.body.classList.add("force-light");
+        btn.textContent = isDark ? "○" : "☽";
+        btn.title = isDark ? "Switch to light mode" : "Switch to dark mode";
+      }
+
+      btn.addEventListener("click", () => {
+        // Cycle: system → dark → light → system
+        if (mode === "system") mode = systemDark ? "light" : "dark";
+        else if (mode === "dark") mode = "light";
+        else mode = "dark";
+        localStorage.setItem("todo_theme", mode);
+        applyMode();
+      });
+
+      applyMode();
+    })();
+
+    // ── IMPORTANT: Replace with your own Google OAuth Client ID ──────────────
+    // 1. Go to https://console.cloud.google.com
+    // 2. Create a project → Enable "Google Drive API"
+    // 3. Create OAuth 2.0 credentials (Web application)
+    // 4. Add your hosting URL to Authorized JavaScript origins
+    // 5. Paste the Client ID below
+    const GOOGLE_CLIENT_ID = "285349694797-bdhvchsfbu7b202v5r709ibnpvfenkao.apps.googleusercontent.com";
+    const DRIVE_FILE_NAME = "todo-app-data.json";
+    const SCOPES = "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/calendar";
+
+    // ── Google Drive helpers ─────────────────────────────────────────────────
+
+    let driveFileId = null;
+    let accessToken = null;
+    let tokenExpiresAt = 0; // timestamp in ms
+
+    function showSyncBar() {
+      const bar = document.getElementById("sync-bar");
+      bar.classList.add("active");
+    }
+    function hideSyncBar() {
+      const bar = document.getElementById("sync-bar");
+      bar.classList.remove("active");
+    }
+
+    // Persist token to localStorage so it survives full app close
+    // We store for up to 7 days — Google refreshes silently if user stays consented
+    function saveToken(token, expiresIn = 3599) {
+      accessToken = token;
+      // Store with 7-day window — silent refresh will get a new token before this expires
+      const exp = Date.now() + (expiresIn - 60) * 1000;
+      tokenExpiresAt = exp;
+      localStorage.setItem("todo_app_token", token);
+      localStorage.setItem("todo_app_token_exp", String(exp));
+      localStorage.setItem("todo_app_token_saved", String(Date.now()));
+    }
+
+    function loadStoredToken() {
+      const token = localStorage.getItem("todo_app_token");
+      const exp = parseInt(localStorage.getItem("todo_app_token_exp") || "0");
+      if (token && exp > Date.now()) {
+        accessToken = token;
+        tokenExpiresAt = exp;
+        return true;
+      }
+      return false;
+    }
+
+    function tokenNeedsRefresh() {
+      // Refresh if token expires within 10 minutes
+      return tokenExpiresAt > 0 && tokenExpiresAt - Date.now() < 10 * 60 * 1000;
+    }
+
+    function clearStoredToken() {
+      accessToken = null;
+      tokenExpiresAt = 0;
+      localStorage.removeItem("todo_app_token");
+      localStorage.removeItem("todo_app_token_exp");
+    }
+
+    async function driveRequest(method, path, body) {
+      const res = await fetch(`https://www.googleapis.com/drive/v3/${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      return res.json();
+    }
+
+    async function findOrCreateFile() {
+      const search = await driveRequest("GET",
+        `files?spaces=appDataFolder&q=name='${DRIVE_FILE_NAME}'&fields=files(id,name,modifiedTime)`);
+      if (search.files && search.files.length > 0) {
+        driveFileId = search.files[0].id;
+        return driveFileId;
+      }
+      const meta = await fetch("https://www.googleapis.com/drive/v3/files", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: DRIVE_FILE_NAME, parents: ["appDataFolder"] }),
+      });
+      const file = await meta.json();
+      driveFileId = file.id;
+      return driveFileId;
+    }
+
+    // Get last modified time from Drive (cheap metadata-only call for polling)
+    async function getDriveModifiedTime() {
+      try {
+        if (!driveFileId) await findOrCreateFile();
+        const res = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=modifiedTime`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        const data = await res.json();
+        return data.modifiedTime || null;
+      } catch { return null; }
+    }
+
+    async function loadFromDrive() {
+      try {
+        showSyncBar();
+        await findOrCreateFile();
+        const res = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!res.ok) return null;
+        const text = await res.text();
+        if (!text || text.trim() === "") return null;
+        return JSON.parse(text);
+      } catch {
+        return null;
+      } finally {
+        hideSyncBar();
+      }
+    }
+
+    async function saveToDrive(data) {
+      try {
+        showSyncBar();
+        if (!driveFileId) await findOrCreateFile();
+        await fetch(
+          `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,
+          {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(data),
+          }
+        );
+      } catch (e) {
+        console.error("Drive save failed:", e);
+      } finally {
+        hideSyncBar();
+      }
+    }
+
+    // ── App logic helpers ────────────────────────────────────────────────────
+
+    const today = new Date();
+
+    // FIX: Use local date, not UTC (toISOString() returns UTC which can be wrong day at night)
+    function getLocalDateStr(d) {
+      const yr = d.getFullYear();
+      const mo = String(d.getMonth() + 1).padStart(2, "0");
+      const dy = String(d.getDate()).padStart(2, "0");
+      return `${yr}-${mo}-${dy}`;
+    }
+
+    const todayStr = getLocalDateStr(today);
+
+    function getDateStr(offset) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + offset);
+      return getLocalDateStr(d);
+    }
+
+    function formatDayHeading(dateStr) {
+      const d = new Date(dateStr + "T12:00:00");
+      const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+      const m = d.getMonth() + 1;
+      const day = d.getDate();
+      return { day: days[d.getDay()], date: `${m}.${String(day).padStart(2,"0")}` };
+    }
+
+    function uid() { return Math.random().toString(36).slice(2,10); }
+
+    function parseTime(str) {
+      if (!str) return null;
+      const m = str.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
+      if (!m) return null;
+      let h = parseInt(m[1]), min = parseInt(m[2]);
+      const ampm = m[3]?.toLowerCase();
+      if (ampm === "pm" && h !== 12) h += 12;
+      if (ampm === "am" && h === 12) h = 0;
+      return h * 60 + min;
+    }
+
+    function formatTime(str) {
+      if (!str) return "";
+      const mins = parseTime(str);
+      if (mins === null) return str;
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      const ampm = h >= 12 ? "pm" : "am";
+      const hh = h % 12 || 12;
+      return `${hh}:${String(m).padStart(2,"0")} ${ampm}`;
+    }
+
+    function sortDone(items) {
+      return [...items.filter(i => !i.done), ...items.filter(i => i.done)];
+    }
+
+    function toISODateTime(dateStr, timeStr) {
+      const mins = parseTime(timeStr);
+      if (mins === null) return null;
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      const start = new Date(`${dateStr}T${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:00`);
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      return { start: start.toISOString(), end: end.toISOString() };
+    }
+
+    const initialData = {
+      tasks: { today: [], weekly: [] },
+      everyday: [],
+      habitLog: {},
+      agenda: {},
+      lastResetDate: todayStr,
+    };
+
+    // ── Google Calendar helpers ──────────────────────────────────────────────
+
+    async function gcalFetchEvents(dateStr) {
+      try {
+        const d = new Date(dateStr + "T00:00:00");
+        const timeMin = d.toISOString();
+        const timeMax = new Date(d.getTime() + 86400000).toISOString();
+        const res = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        const data = await res.json();
+        if (!data.items) return [];
+        return data.items
+          .filter(e => e.start?.dateTime)
+          .map(e => {
+            const dt = new Date(e.start.dateTime);
+            const h = dt.getHours(), m = dt.getMinutes();
+            const ampm = h >= 12 ? "pm" : "am";
+            const hh = h % 12 || 12;
+            const time = `${hh}:${String(m).padStart(2,"0")} ${ampm}`;
+            return { gcalId: e.id, title: e.summary || "Untitled", time };
+          });
+      } catch { return []; }
+    }
+
+    async function gcalCreateEvent(dateStr, title, timeStr) {
+      try {
+        const dt = toISODateTime(dateStr, timeStr);
+        if (!dt) return null;
+        const res = await fetch(
+          "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              summary: title,
+              start: { dateTime: dt.start, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+              end: { dateTime: dt.end, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+            }),
+          }
+        );
+        const event = await res.json();
+        return event.id || null;
+      } catch { return null; }
+    }
+
+    async function gcalDeleteEvent(gcalId) {
+      try {
+        await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events/${gcalId}`,
+          { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+      } catch {}
+    }
+
+    // ── useData hook with Drive sync + polling ────────────────────────────────
+
+    function useData() {
+      const [data, setData] = useState(initialData);
+      const [loaded, setLoaded] = useState(false);
+      const saveTimer = useRef(null);
+      const lastModified = useRef(null);
+      const isSaving = useRef(false);
+      const loadDataRef = useRef(null); // stable ref so PTR always calls latest version
+
+      async function loadData() {
+        const remote = await loadFromDrive();
+        const local = (() => {
+          try {
+            const s = localStorage.getItem("todo_app_data");
+            return s ? JSON.parse(s) : null;
+          } catch { return null; }
+        })();
+
+        let merged = { ...initialData, ...(remote || local || {}) };
+
+        if (merged.lastResetDate !== todayStr) {
+          merged = {
+            ...merged,
+            everyday: (merged.everyday || []).map(g => ({ ...g, done: false })),
+            lastResetDate: todayStr,
+          };
+        }
+
+        setData(merged);
+        setLoaded(true);
+
+        const mt = await getDriveModifiedTime();
+        lastModified.current = mt;
+      }
+
+      // Keep ref and global in sync with the latest loadData on every render
+      loadDataRef.current = loadData;
+      _ptrRefreshCallback = () => loadDataRef.current();
+
+      // Poll Drive every 30s — if modifiedTime changed and we're not mid-save,
+      // pull the latest data so other devices' changes appear automatically
+      useEffect(() => {
+        if (!loaded) return;
+        const interval = setInterval(async () => {
+          if (isSaving.current || !accessToken) return;
+          const mt = await getDriveModifiedTime();
+          if (mt && mt !== lastModified.current) {
+            lastModified.current = mt;
+            const remote = await loadFromDrive();
+            if (remote) {
+              setData(prev => {
+                // Merge: remote wins on everything except in-progress local edits
+                // (localStorage has the latest local state)
+                const local = (() => {
+                  try { return JSON.parse(localStorage.getItem("todo_app_data") || "{}"); }
+                  catch { return {}; }
+                })();
+                // If local lastModified is newer than what we last saved, keep local
+                // Otherwise take remote
+                return { ...initialData, ...remote };
+              });
+              localStorage.setItem("todo_app_data", JSON.stringify(remote));
+            }
+          }
+        }, 30000); // check every 30 seconds
+        return () => clearInterval(interval);
+      }, [loaded]);
+
+      // Also sync when tab becomes visible (user switches back to app)
+      useEffect(() => {
+        if (!loaded) return;
+        async function onVisible() {
+          if (document.visibilityState === "visible" && accessToken && !isSaving.current) {
+            const mt = await getDriveModifiedTime();
+            if (mt && mt !== lastModified.current) {
+              lastModified.current = mt;
+              const remote = await loadFromDrive();
+              if (remote) {
+                setData({ ...initialData, ...remote });
+                localStorage.setItem("todo_app_data", JSON.stringify(remote));
+              }
+            }
+          }
+        }
+        document.addEventListener("visibilitychange", onVisible);
+        return () => document.removeEventListener("visibilitychange", onVisible);
+      }, [loaded]);
+
+      // Save to Drive + localStorage on change (debounced 1.2s)
+      useEffect(() => {
+        if (!loaded) return;
+        localStorage.setItem("todo_app_data", JSON.stringify(data));
+        clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(async () => {
+          isSaving.current = true;
+          await saveToDrive(data);
+          // Update lastModified after save so we don't re-pull our own write
+          const mt = await getDriveModifiedTime();
+          lastModified.current = mt;
+          isSaving.current = false;
+        }, 1200);
+      }, [data, loaded]);
+
+      const update = useCallback(fn => setData(fn), []);
+      return [data, update, loaded, loadData];
+    }
+
+    // ── Shared components ────────────────────────────────────────────────────
+
+    function Ring({ on, onClick }) {
+      return <div className={`ring ${on ? "on" : ""}`} onClick={onClick} />;
+    }
+
+    function AddRow({ placeholder, onAdd, showTime = false }) {
+      const [text, setText] = useState("");
+      const [time, setTime] = useState("");
+      function submit() {
+        const t = text.trim();
+        if (!t) return;
+        onAdd(t, time.trim());
+        setText(""); setTime("");
+      }
+      return (
+        <div className="add-row">
+          <div className="add-ring" />
+          <input className="add-in" placeholder={placeholder} value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && submit()}
+          />
+          {showTime && (
+            <input className="time-in" placeholder="time" value={time}
+              onChange={e => setTime(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && submit()}
+            />
+          )}
+        </div>
+      );
+    }
+
+    function TaskItem({ item, onToggle, onDelete, onEdit }) {
+      const [editing, setEditing] = useState(false);
+      const [val, setVal] = useState(item.text);
+      const ref = useRef(null);
+      useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
+      function commit() {
+        const v = val.trim();
+        if (v) onEdit(item.id, v); else setVal(item.text);
+        setEditing(false);
+      }
+      return (
+        <li className={`t-item ${item.done ? "done" : ""}`}>
+          <Ring on={item.done} onClick={() => onToggle(item.id)} />
+          {editing ? (
+            <input ref={ref} className="edit-input" value={val}
+              onChange={e => setVal(e.target.value)}
+              onBlur={commit}
+              onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setVal(item.text); setEditing(false); } }}
+            />
+          ) : (
+            <span className="t-text" onDoubleClick={() => { setVal(item.text); setEditing(true); }}>{item.text}</span>
+          )}
+          {item.time && !editing && <span className="t-time">{formatTime(item.time)}</span>}
+          <button className="t-del" onClick={() => onDelete(item.id)}>×</button>
+        </li>
+      );
+    }
+
+    function TimedItem({ item, onToggle, onDelete, onEdit, onEditTime }) {
+      const [editingText, setEditingText] = useState(false);
+      const [editingTime, setEditingTime] = useState(false);
+      const [textVal, setTextVal] = useState(item.text);
+      const [timeVal, setTimeVal] = useState(item.time);
+      const textRef = useRef(null);
+      const timeRef = useRef(null);
+      useEffect(() => { if (editingText) textRef.current?.focus(); }, [editingText]);
+      useEffect(() => { if (editingTime) timeRef.current?.focus(); }, [editingTime]);
+      function commitText() {
+        const v = textVal.trim();
+        if (v) onEdit(item.id, v); else setTextVal(item.text);
+        setEditingText(false);
+      }
+      function commitTime() {
+        onEditTime(item.id, timeVal.trim() || item.time);
+        setEditingTime(false);
+      }
+      return (
+        <li className={`timed-row ${item.done ? "done" : ""}`}>
+          <Ring on={item.done} onClick={() => onToggle(item.id)} />
+          {editingText ? (
+            <input ref={textRef} className="edit-input" value={textVal}
+              onChange={e => setTextVal(e.target.value)}
+              onBlur={commitText}
+              onKeyDown={e => { if (e.key === "Enter") commitText(); if (e.key === "Escape") { setTextVal(item.text); setEditingText(false); } }}
+            />
+          ) : (
+            <span className="t-text" onDoubleClick={() => { setTextVal(item.text); setEditingText(true); }}>{item.text}</span>
+          )}
+          {item.gcalId && !editingText && !editingTime && (
+            <span className="gcal-badge" title="Synced to Google Calendar">●</span>
+          )}
+          {editingTime ? (
+            <input ref={timeRef} className="edit-time-input" value={timeVal}
+              onChange={e => setTimeVal(e.target.value)}
+              onBlur={commitTime}
+              onKeyDown={e => { if (e.key === "Enter") commitTime(); if (e.key === "Escape") { setTimeVal(item.time); setEditingTime(false); } }}
+            />
+          ) : (
+            <span className="timed-col" onDoubleClick={() => { setTimeVal(item.time); setEditingTime(true); }}>{formatTime(item.time)}</span>
+          )}
+          <button className="t-del" onClick={() => onDelete(item.id)}>×</button>
+        </li>
+      );
+    }
+
+    function HabitItem({ item, isDoneToday, trailDays, habitLog, onToggleToday, onToggleDay, onDelete, onEdit }) {
+      const [editing, setEditing] = useState(false);
+      const [val, setVal] = useState(item.text);
+      const ref = useRef(null);
+      useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
+      function commit() {
+        const v = val.trim();
+        if (v) onEdit(item.id, v); else setVal(item.text);
+        setEditing(false);
+      }
+      function dotDone(ds) { return !!habitLog?.[`${item.id}_${ds}`]; }
+      return (
+        <li className={`habit-row ${isDoneToday ? "done" : ""}`}>
+          <Ring on={isDoneToday} onClick={() => onToggleToday(item.id)} />
+          {editing ? (
+            <input ref={ref} className="edit-input" value={val}
+              onChange={e => setVal(e.target.value)}
+              onBlur={commit}
+              onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setVal(item.text); setEditing(false); } }}
+            />
+          ) : (
+            <span className="habit-name" onDoubleClick={() => { setVal(item.text); setEditing(true); }}>{item.text}</span>
+          )}
+          {!editing && (
+            <div className="trail">
+              {trailDays.map((ds, i) => {
+                const isToday = ds === todayStr;
+                const future = ds > todayStr;
+                return (
+                  <div
+                    key={ds}
+                    className={`tr-dot ${dotDone(ds) ? "on" : ""} ${isToday ? "today" : ""} ${future ? "future-dot" : ""}`}
+                    onClick={() => !future && onToggleDay(item.id, ds)}
+                    title={ds}
+                  />
+                );
+              })}
+            </div>
+          )}
+          <button className="t-del" onClick={() => onDelete(item.id)}>×</button>
+        </li>
+      );
+    }
+
+    // ── To Do + Daily Habits Section ─────────────────────────────────────────
+
+    function ToDoSection({ data, update }) {
+      function addTask(key, text) {
+        update(d => ({ ...d, tasks: { ...d.tasks, [key]: [...(d.tasks[key]||[]), { id: uid(), text, done: false }] } }));
+      }
+      function toggleTask(key, id) {
+        update(d => ({ ...d, tasks: { ...d.tasks, [key]: d.tasks[key].map(t => t.id === id ? { ...t, done: !t.done } : t) } }));
+      }
+      function delTask(key, id) {
+        update(d => ({ ...d, tasks: { ...d.tasks, [key]: d.tasks[key].filter(t => t.id !== id) } }));
+      }
+      function editTask(key, id, text) {
+        update(d => ({ ...d, tasks: { ...d.tasks, [key]: d.tasks[key].map(t => t.id === id ? { ...t, text } : t) } }));
+      }
+
+      const everyday = data.everyday || [];
+      const habitLog = data.habitLog || {};
+      const [overviewOpen, setOverviewOpen] = useState(false);
+      const WEEKS = 4;
+
+      // Trail: Sun-Sat of the current week (7 dots, no labels)
+      const sundayOffset = -(today.getDay()); // 0=Sun so offset is 0 on Sun, -1 on Mon, etc
+      const thisWeekDays = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(today);
+        d.setDate(today.getDate() + sundayOffset + i);
+        return getLocalDateStr(d);
+      });
+
+      // weekStarts = Sunday of each of the past 8 weeks, using local dates
+      const weekStarts = Array.from({ length: WEEKS }, (_, w) => {
+        const d = new Date(today);
+        d.setDate(today.getDate() + sundayOffset - (WEEKS - 1 - w) * 7);
+        return getLocalDateStr(d);
+      });
+
+      function addHabit(text) {
+        update(d => ({ ...d, everyday: [...(d.everyday||[]), { id: uid(), text, done: false }] }));
+      }
+      function toggleToday(id) {
+        update(d => {
+          const item = (d.everyday||[]).find(e => e.id === id);
+          if (!item) return d;
+          const newDone = !item.done;
+          const key = `${id}_${todayStr}`;
+          const log = { ...d.habitLog };
+          if (newDone) log[key] = true; else delete log[key];
+          return { ...d, everyday: d.everyday.map(e => e.id === id ? { ...e, done: newDone } : e), habitLog: log };
+        });
+      }
+      function toggleDay(hid, ds) {
+        update(d => {
+          const key = `${hid}_${ds}`;
+          const log = { ...d.habitLog };
+          if (log[key]) delete log[key]; else log[key] = true;
+          if (ds === todayStr) {
+            return { ...d, everyday: (d.everyday||[]).map(e => e.id === hid ? { ...e, done: !!log[key] } : e), habitLog: log };
+          }
+          return { ...d, habitLog: log };
+        });
+      }
+      function delHabit(id) {
+        update(d => ({ ...d, everyday: d.everyday.filter(e => e.id !== id) }));
+      }
+      function editHabit(id, text) {
+        update(d => ({ ...d, everyday: d.everyday.map(e => e.id === id ? { ...e, text } : e) }));
+      }
+      function isDone(hid, ds) { return !!habitLog[`${hid}_${ds}`]; }
+      function streak(hid) {
+        let s = 0, d = new Date(today);
+        while (isDone(hid, getLocalDateStr(d))) { s++; d.setDate(d.getDate()-1); }
+        return s;
+      }
+
+      const todayItems = sortDone(data.tasks.today || []);
+      const weekItems = sortDone(data.tasks.weekly || []);
+      const sortedHabits = sortDone(everyday);
+      const habitDoneCount = everyday.filter(e => e.done).length;
+
+      return (
+        <div className="section">
+          <div className="sec-label">To do</div>
+          <div className="sub-label first">
+            Today
+            {todayItems.length > 0 && <span className="sub-meta">{todayItems.filter(i=>i.done).length}/{todayItems.length}</span>}
+          </div>
+          <div className="list-scroll">
+            <ul className="task-list">
+              {todayItems.map(item => (
+                <TaskItem key={item.id} item={item}
+                  onToggle={id => toggleTask("today", id)}
+                  onDelete={id => delTask("today", id)}
+                  onEdit={(id, text) => editTask("today", id, text)}
+                />
+              ))}
+            </ul>
+          </div>
+          <AddRow placeholder="Add a task for today…" onAdd={t => addTask("today", t)} />
+
+          <div className="sub-label">
+            This week
+            {weekItems.length > 0 && <span className="sub-meta">{weekItems.filter(i=>i.done).length}/{weekItems.length}</span>}
+          </div>
+          <div className="list-scroll">
+            <ul className="task-list">
+              {weekItems.map(item => (
+                <TaskItem key={item.id} item={item}
+                  onToggle={id => toggleTask("weekly", id)}
+                  onDelete={id => delTask("weekly", id)}
+                  onEdit={(id, text) => editTask("weekly", id, text)}
+                />
+              ))}
+            </ul>
+          </div>
+          <AddRow placeholder="Add a task for this week…" onAdd={t => addTask("weekly", t)} />
+
+          <div className="sub-label">
+            Daily habits
+            {everyday.length > 0 && (
+              <span className="sub-meta">
+                {habitDoneCount === everyday.length && everyday.length > 0 ? "done" : `${habitDoneCount}/${everyday.length}`}
+              </span>
+            )}
+          </div>
+          <div className="list-scroll">
+            <ul className="task-list">
+              {sortedHabits.map(item => (
+                <HabitItem key={item.id} item={item}
+                  isDoneToday={item.done}
+                  trailDays={thisWeekDays}
+                  habitLog={data.habitLog}
+                  onToggleToday={toggleToday}
+                  onToggleDay={toggleDay}
+                  onDelete={delHabit}
+                  onEdit={editHabit}
+                />
+              ))}
+            </ul>
+          </div>
+          <AddRow placeholder="Excellence is a habit…" onAdd={addHabit} />
+
+          {everyday.length > 0 && (
+            <div className="overview">
+              <button className="overview-toggle" onClick={() => setOverviewOpen(o => !o)}>
+                <span className={`overview-toggle-arrow ${overviewOpen ? "open" : ""}`}>▶</span>
+                4-week view
+              </button>
+              {overviewOpen && (
+                <div className="overview-body">
+                  {everyday.map(item => (
+                    <div key={item.id} className="ov-card">
+                      <div className="ov-card-name">{item.text}</div>
+                      {weekStarts.map((ws, wi) => {
+                        const days = Array.from({ length: 7 }, (_, di) => {
+                          const d = new Date(ws + "T12:00:00");
+                          d.setDate(d.getDate() + di);
+                          return getLocalDateStr(d);
+                        });
+                        return (
+                          <div className="ov-week-row" key={ws}>
+                            <span className="ov-wk-label">{wi === WEEKS-1 ? "now" : `w${wi+1}`}</span>
+                            <div className="ov-dots">
+                              {days.map(ds => {
+                                const future = ds > todayStr;
+                                const isToday = ds === todayStr;
+                                const dotKey = `${item.id}_${ds}`;
+                                const d = new Date(ds + "T12:00:00");
+                                const utcKey = `${item.id}_${d.toISOString().split("T")[0]}`;
+                                const isOn = !future && !!(habitLog[dotKey] || habitLog[utcKey]);
+                                return (
+                                  <div key={ds}
+                                    className={`ov-dot ${future?"future":""} ${isToday?"td":""} ${isOn?"on":""}`}
+                                    onClick={() => !future && toggleDay(item.id, ds)}
+                                    title={ds}
+                                  />
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div className="streak">
+                        {streak(item.id) > 0 ? `${streak(item.id)}-day streak` : "No current streak"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Agenda Section ───────────────────────────────────────────────────────
+
+    function AgendaSection({ data, update }) {
+      const RANGE = 56;
+      const [offset, setOffset] = useState(0);
+      const [calStatus, setCalStatus] = useState("");
+      const [calLoading, setCalLoading] = useState(false);
+      const dateStr = getDateStr(offset);
+      const isToday = dateStr === todayStr;
+      const { day, date } = formatDayHeading(dateStr);
+
+      useEffect(() => {
+        let cancelled = false;
+        async function loadCalEvents() {
+          setCalLoading(true);
+          const gcalEvents = await gcalFetchEvents(dateStr);
+          if (cancelled) return;
+          if (gcalEvents.length > 0) {
+            update(d => {
+              const existing = d.agenda?.[dateStr] || [];
+              const existingGcalIds = new Set(existing.map(e => e.gcalId).filter(Boolean));
+              const toAdd = gcalEvents
+                .filter(e => e.gcalId && !existingGcalIds.has(e.gcalId))
+                .map(e => ({ id: uid(), text: e.title, time: e.time || "", done: false, gcalId: e.gcalId, fromGcal: true }));
+              if (toAdd.length === 0) return d;
+              return { ...d, agenda: { ...d.agenda, [dateStr]: [...existing, ...toAdd] } };
+            });
+            setCalStatus(`${gcalEvents.length} event${gcalEvents.length !== 1 ? "s" : ""} from Google Calendar`);
+          } else {
+            setCalStatus("");
+          }
+          setCalLoading(false);
+        }
+        loadCalEvents();
+        return () => { cancelled = true; };
+      }, [dateStr]);
+
+      const all = data.agenda?.[dateStr] || [];
+      const untimed = sortDone(all.filter(i => !i.time));
+      const timed = sortDone(all.filter(i => i.time).sort((a,b) => (parseTime(a.time)||0)-(parseTime(b.time)||0)));
+
+      async function add(text, time) {
+        const newItem = { id: uid(), text, time: time||"", done: false, gcalId: null };
+        if (time) {
+          setCalLoading(true);
+          const gcalId = await gcalCreateEvent(dateStr, text, time);
+          if (gcalId) { newItem.gcalId = gcalId; setCalStatus("Saved to Google Calendar"); }
+          else { setCalStatus("Saved locally"); }
+          setCalLoading(false);
+        }
+        update(d => ({ ...d, agenda: { ...d.agenda, [dateStr]: [...(d.agenda?.[dateStr]||[]), newItem] } }));
+      }
+
+      function toggle(id) {
+        update(d => ({ ...d, agenda: { ...d.agenda, [dateStr]: (d.agenda?.[dateStr]||[]).map(i => i.id===id ? {...i,done:!i.done} : i) } }));
+      }
+
+      async function del(id) {
+        const item = (data.agenda?.[dateStr]||[]).find(i => i.id === id);
+        if (item?.gcalId) await gcalDeleteEvent(item.gcalId);
+        update(d => ({ ...d, agenda: { ...d.agenda, [dateStr]: (d.agenda?.[dateStr]||[]).filter(i => i.id!==id) } }));
+      }
+
+      function editText(id, text) {
+        update(d => ({ ...d, agenda: { ...d.agenda, [dateStr]: (d.agenda?.[dateStr]||[]).map(i => i.id===id ? {...i,text} : i) } }));
+      }
+      function editTime(id, time) {
+        update(d => ({ ...d, agenda: { ...d.agenda, [dateStr]: (d.agenda?.[dateStr]||[]).map(i => i.id===id ? {...i,time} : i) } }));
+      }
+
+      return (
+        <div className="section">
+          <button className="sec-label-btn" onClick={() => setOffset(0)}>Agenda</button>
+          <div className="agenda-nav">
+            <button className="ag-arrow" onClick={() => setOffset(o => Math.max(o-1,-RANGE))}>←</button>
+            <div className="ag-day">
+              <div className="ag-day-name">{day}{isToday && <span className="ag-today-badge"> — today</span>}</div>
+              <div className="ag-day-date">{date}</div>
+            </div>
+            <button className="ag-arrow" onClick={() => setOffset(o => Math.min(o+1,RANGE))}>→</button>
+          </div>
+
+          <div className="ag-sub">To do</div>
+          <div className="list-scroll">
+            <ul className="task-list">
+              {untimed.map(item => (
+                <TaskItem key={item.id} item={item} onToggle={toggle} onDelete={del} onEdit={editText} />
+              ))}
+            </ul>
+            {untimed.length === 0 && <p className="empty-msg">Carpe diem…</p>}
+          </div>
+
+          {timed.length > 0 && (
+            <>
+              <div className="ag-sub">Events</div>
+              <div className="list-scroll">
+                <ul className="task-list">
+                  {timed.map(item => (
+                    <TimedItem key={item.id} item={item} onToggle={toggle} onDelete={del} onEdit={editText} onEditTime={editTime} />
+                  ))}
+                </ul>
+              </div>
+            </>
+          )}
+
+          <AddRow placeholder="Add item…" onAdd={add} showTime />
+          <p className="hint-msg">Add a time (e.g. 9:00 am) to create an event.</p>
+          {(calLoading || calStatus) && (
+            <div className="cal-status">
+              {calLoading && <div className="cal-spinner" />}
+              {!calLoading && calStatus && <span>{calStatus}</span>}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Auth screen ──────────────────────────────────────────────────────────
+
+    function AuthScreen({ onSignIn }) {
+      return (
+        <div className="auth-screen">
+          <div className="auth-title">To do</div>
+          <div className="auth-sub">Sign in to sync across all your devices</div>
+          <button className="auth-btn" onClick={onSignIn}>Sign in with Google</button>
+          <p className="auth-note">Your data is stored privately in your Google Drive.</p>
+        </div>
+      );
+    }
+
+    // ── App ──────────────────────────────────────────────────────────────────
+
+    function App() {
+      const [authed, setAuthed] = useState(false);
+      const [authChecked, setAuthChecked] = useState(false);
+      const [tokenClient, setTokenClient] = useState(null);
+      const [data, update, loaded, loadData] = useData();
+
+      const dayOfWeek = today.toLocaleDateString("en-US", { weekday: "long" });
+      const dateDisplay = today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+      const devMode = !GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID === "YOUR_GOOGLE_CLIENT_ID_HERE";
+
+      async function onAuthSuccess(token, expiresIn) {
+        saveToken(token, expiresIn);
+        localStorage.setItem("todo_app_authed", "1");
+        setAuthed(true);
+        await loadData();
+      }
+
+      useEffect(() => {
+        if (devMode) { setAuthChecked(true); loadData(); return; }
+
+        // Interactive client for manual sign-in
+        const client = google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: SCOPES,
+          callback: (tokenResponse) => {
+            if (tokenResponse.access_token) {
+              onAuthSuccess(tokenResponse.access_token, tokenResponse.expires_in);
+            }
+            setAuthChecked(true);
+          },
+          error_callback: () => setAuthChecked(true),
+        });
+        setTokenClient(client);
+
+        // 1. Try restoring token from localStorage (survives full app close)
+        if (loadStoredToken()) {
+          setAuthed(true);
+          setAuthChecked(true);
+          loadData();
+
+          // If token is close to expiry, silently refresh in background
+          if (tokenNeedsRefresh()) {
+            google.accounts.oauth2.initTokenClient({
+              client_id: GOOGLE_CLIENT_ID,
+              scope: SCOPES,
+              prompt: "",
+              callback: (tokenResponse) => {
+                if (tokenResponse.access_token) {
+                  saveToken(tokenResponse.access_token, tokenResponse.expires_in);
+                }
+              },
+              error_callback: () => {},
+            }).requestAccessToken({ prompt: "" });
+          }
+          return;
+        }
+
+        // 2. No stored token — try silent OAuth refresh if previously authed
+        const wasPreviouslyAuthed = localStorage.getItem("todo_app_authed") === "1";
+        if (wasPreviouslyAuthed) {
+          google.accounts.oauth2.initTokenClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: SCOPES,
+            prompt: "",
+            callback: async (tokenResponse) => {
+              if (tokenResponse.access_token) {
+                await onAuthSuccess(tokenResponse.access_token, tokenResponse.expires_in);
+              } else {
+                clearStoredToken();
+                localStorage.removeItem("todo_app_authed");
+              }
+              setAuthChecked(true);
+            },
+            error_callback: () => {
+              clearStoredToken();
+              localStorage.removeItem("todo_app_authed");
+              setAuthChecked(true);
+            },
+          }).requestAccessToken({ prompt: "" });
+        } else {
+          setAuthChecked(true);
+        }
+      }, []);
+
+      function handleSignIn() {
+        if (tokenClient) tokenClient.requestAccessToken({ prompt: "consent" });
+      }
+
+      function handleSignOut() {
+        google.accounts.oauth2.revoke(accessToken, () => {
+          clearStoredToken();
+          localStorage.removeItem("todo_app_authed");
+          setAuthed(false);
+        });
+      }
+
+      if (!devMode && !authChecked) {
+        return (
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:"100vh" }}>
+            <div className="cal-spinner" style={{ width:20, height:20, borderWidth:2 }} />
+          </div>
+        );
+      }
+
+      if (!devMode && !authed) {
+        return <AuthScreen onSignIn={handleSignIn} />;
+      }
+
+      if (!loaded) {
+        return (
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:"100vh" }}>
+            <div className="cal-spinner" style={{ width:20, height:20, borderWidth:2 }} />
+          </div>
+        );
+      }
+
+      return (
+        <div className="app">
+          <div className="hd">
+            <div className="hd-top">
+              <div className="hd-date">{dateDisplay}</div>
+              {!devMode && <button className="hd-signout" onClick={handleSignOut}>Sign out</button>}
+            </div>
+            <div className="hd-title">{dayOfWeek}</div>
+          </div>
+          <ToDoSection data={data} update={update} />
+          <AgendaSection data={data} update={update} />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
